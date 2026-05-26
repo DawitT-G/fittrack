@@ -372,24 +372,37 @@ function RecipeManager({ recipes, onAdd, onUpdate, onDelete, onClose }) {
   const [searchQ, setSearchQ] = useState("");
   const [searchRes, setSearchRes] = useState([]);
   const [searching, setSearching] = useState(false);
+  const [searchError, setSearchError] = useState("");
   const [ingGrams, setIngGrams] = useState({});
 
-  const doSearch = async () => {
-    if (!searchQ.trim()) return;
-    setSearching(true);
+  // USDA FoodData Central — has raw ingredients like "Broccoli, raw", "Chicken breast, cooked"
+  // Much better than Open Food Facts for recipe building
+  const doSearch = async (term) => {
+    const q = (term !== undefined ? term : searchQ).trim();
+    if (!q) return;
+    setSearching(true); setSearchRes([]); setSearchError("");
     try {
       const res = await fetch(
-        `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(searchQ)}&json=1&page_size=20&lc=en&fields=product_name_en,product_name,nutriments,code&action=process&sort_by=unique_scans_n`
+        `https://api.nal.usda.gov/fdc/v1/foods/search?query=${encodeURIComponent(q)}&api_key=IcD51EM9WkfWE0WBKtuemOCHgmsx6fZSxVguEfjT&dataType=Foundation,SR%20Legacy&pageSize=15`,
+        { signal: AbortSignal.timeout(8000) }
       );
       const data = await res.json();
-      const items = (data.products || [])
-        .filter((p) => p.nutriments?.["energy-kcal_100g"] != null)
-        .map((p) => ({ ...p, _name: p.product_name_en || p.product_name }))
-        .filter((p) => p._name && p._name.trim().length > 1)
-        .sort((a, b) => (b.product_name_en ? 1 : 0) - (a.product_name_en ? 1 : 0))
-        .slice(0, 10);
+      const items = (data.foods || []).map((f) => ({
+        code: String(f.fdcId),
+        _name: f.description,
+        nutriments: {
+          "energy-kcal_100g": f.foodNutrients?.find((n) => n.nutrientId === 1008)?.value || 0,
+          proteins_100g: f.foodNutrients?.find((n) => n.nutrientId === 1003)?.value || 0,
+          carbohydrates_100g: f.foodNutrients?.find((n) => n.nutrientId === 1005)?.value || 0,
+          fat_100g: f.foodNutrients?.find((n) => n.nutrientId === 1004)?.value || 0,
+          fiber_100g: f.foodNutrients?.find((n) => n.nutrientId === 1079)?.value || 0,
+        },
+      }));
+      if (!items.length) setSearchError("No results. Try a simpler term like \"chicken\" or \"rice\".");
       setSearchRes(items);
-    } catch { }
+    } catch {
+      setSearchError("Search failed. Check your connection and try again.");
+    }
     setSearching(false);
   };
 
@@ -424,13 +437,22 @@ function RecipeManager({ recipes, onAdd, onUpdate, onDelete, onClose }) {
         <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Recipe name…"
           className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3 text-white" />
         <div className="flex gap-2">
-          <input value={searchQ} onChange={(e) => setSearchQ(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && doSearch()}
-            placeholder="Search ingredient in English…"
-            className="flex-1 bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-2.5 text-white text-sm placeholder-zinc-500" />
-          <button onClick={doSearch} className="bg-zinc-700 text-white rounded-xl px-3"><Search size={16} /></button>
+          <input
+            value={searchQ}
+            onChange={(e) => setSearchQ(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); doSearch(e.target.value); } }}
+            placeholder="e.g. chicken breast, brown rice…"
+            className="flex-1 bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-2.5 text-white text-sm placeholder-zinc-500"
+          />
+          <button
+            onClick={() => doSearch(searchQ)}
+            disabled={searching || !searchQ.trim()}
+            className="bg-lime-400 disabled:opacity-40 text-zinc-950 rounded-xl px-3 font-bold">
+            {searching ? <RefreshCw size={16} className="animate-spin" /> : <Search size={16} />}
+          </button>
         </div>
-        {searching && <div className="text-zinc-400 text-xs">Searching…</div>}
+        {searchError && <div className="text-zinc-500 text-xs bg-zinc-800 rounded-xl px-3 py-2">{searchError}</div>}
+        {searching && <div className="text-zinc-400 text-xs text-center py-2">Searching USDA database…</div>}
         {searchRes.map((p) => (
           <div key={p.code} className="bg-zinc-800 rounded-xl p-3 flex items-center gap-3">
             <div className="flex-1 text-sm text-white leading-tight">{p._name}</div>
