@@ -1,4 +1,4 @@
-export const uid = () => Math.random().toString(36).slice(2, 11);
+export const uid = () => crypto.randomUUID();
 export const todayDate = () => new Date().toISOString().split("T")[0];
 export const round = (v) => Math.round(v || 0);
 export const numFmt = (v) => Number(v || 0).toLocaleString();
