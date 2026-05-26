@@ -107,6 +107,10 @@ export default function useProfileData(profileId) {
       upd("recipes", [...state.recipes, row]);
       await supabase.from("recipes").insert(row);
     },
+    updateRecipe: async (id, r) => {
+      upd("recipes", state.recipes.map((x) => (x.id === id ? { ...x, ...r } : x)));
+      await supabase.from("recipes").update({ name: r.name, ingredients: r.ingredients, totals: r.totals }).eq("id", id);
+    },
     deleteRecipe: async (id) => {
       upd("recipes", state.recipes.filter((r) => r.id !== id));
       await supabase.from("recipes").delete().eq("id", id);
