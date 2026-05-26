@@ -42,18 +42,21 @@ export function Sidebar({ page, setPage, profile }) {
 
 export function BottomNav({ page, setPage }) {
   return (
-    <div className="md:hidden fixed bottom-0 left-0 right-0 bg-zinc-900 border-t border-zinc-800 flex justify-around py-1.5 z-40">
-      {NAV.map(({ id, icon: Icon, label }) => (
-        <button
-          key={id}
-          onClick={() => setPage(id)}
-          className={`flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-xl
-            ${page === id ? "text-lime-400" : "text-zinc-500"}`}
-        >
-          <Icon size={19} strokeWidth={page === id ? 2.5 : 1.5} />
-          <span className="text-xs">{label}</span>
-        </button>
-      ))}
+    <div className="md:hidden fixed bottom-0 left-0 right-0 bg-zinc-900 border-t border-zinc-800 z-40"
+      style={{ paddingBottom: "env(safe-area-inset-bottom, 12px)" }}>
+      <div className="flex justify-around py-2">
+        {NAV.map(({ id, icon: Icon, label }) => (
+          <button
+            key={id}
+            onClick={() => setPage(id)}
+            className={`flex flex-col items-center gap-0.5 px-2 py-1 rounded-xl
+              ${page === id ? "text-lime-400" : "text-zinc-500"}`}
+          >
+            <Icon size={19} strokeWidth={page === id ? 2.5 : 1.5} />
+            <span className="text-xs">{label}</span>
+          </button>
+        ))}
+      </div>
     </div>
   );
 }
