@@ -89,6 +89,36 @@ export default function SettingsPage({ data, profile, onSwitchProfile }) {
         </div>
       </div>
 
+      {/* Body stats for body fat calculation */}
+      <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-4 mb-4">
+        <div className="text-xs text-zinc-500 font-semibold mb-4 uppercase tracking-wider">Body Stats</div>
+        <div className="text-xs text-zinc-500 mb-4">Used for body fat % estimation in the Body tab.</div>
+        <div className="flex items-center justify-between py-3 border-b border-zinc-800">
+          <div>
+            <div className="text-sm text-white font-medium">Height</div>
+            <div className="text-xs text-zinc-500">{settings.measureUnit === "in" ? "inches" : "cm"}</div>
+          </div>
+          <input
+            type="number"
+            value={settings.height || ""}
+            onChange={(e) => upd("height", e.target.value)}
+            placeholder="e.g. 180"
+            className="bg-zinc-800 border border-zinc-700 rounded-xl px-3 py-2 text-white text-sm w-28 text-center font-bold"
+            style={H}
+          />
+        </div>
+        <div className="flex items-center justify-between pt-3">
+          <div className="text-sm text-white font-medium">Biological Sex</div>
+          <div className="flex border border-zinc-700 rounded-xl overflow-hidden">
+            {[["male", "Male"], ["female", "Female"]].map(([val, label]) => (
+              <button key={val} onClick={() => upd("gender", val)}
+                className={`px-4 py-2 text-sm font-bold transition-colors ${settings.gender === val ? "bg-lime-400 text-zinc-950" : "text-zinc-400"}`}
+                style={H}>{label}</button>
+            ))}
+          </div>
+        </div>
+      </div>
+
       {/* About */}
       <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-4">
         <div className="font-semibold text-white mb-1">FitTrack v3</div>
