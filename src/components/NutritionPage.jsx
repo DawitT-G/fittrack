@@ -1,5 +1,5 @@
 import { useState, useRef } from "react";
-import { Plus, Search, Camera, X, Check, Sparkles, RefreshCw, Trash2, ArrowLeft } from "lucide-react";
+import { Plus, Search, Camera, X, Check, Sparkles, RefreshCw, Trash2, ArrowLeft, Edit2 } from "lucide-react";
 import { Html5Qrcode } from "html5-qrcode";
 import { Modal } from "./ui";
 import { H, MEALS, AI_KEY } from "../lib/constants";
@@ -364,8 +364,9 @@ function AddCustomFoodModal({ onAdd, onClose }) {
 }
 
 // ── Recipe Manager ────────────────────────────────────────────────────────────
-function RecipeManager({ recipes, onAdd, onDelete, onClose }) {
+function RecipeManager({ recipes, onAdd, onUpdate, onDelete, onClose }) {
   const [creating, setCreating] = useState(false);
+  const [editingRecipe, setEditingRecipe] = useState(null);
   const [name, setName] = useState("");
   const [ingredients, setIngredients] = useState([]);
   const [searchQ, setSearchQ] = useState("");
@@ -374,11 +375,19 @@ function RecipeManager({ recipes, onAdd, onDelete, onClose }) {
   const [ingGrams, setIngGrams] = useState({});
 
   const doSearch = async () => {
-    if (!searchQ.trim()) return; setSearching(true);
+    if (!searchQ.trim()) return;
+    setSearching(true);
     try {
-      const res = await fetch(`https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(searchQ)}&json=1&page_size=8&lc=en&fields=product_name_en,product_name,nutriments,code&action=process`);
+      const res = await fetch(
+        `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(searchQ)}&json=1&page_size=20&lc=en&fields=product_name_en,product_name,nutriments,code&action=process&sort_by=unique_scans_n`
+      );
       const data = await res.json();
-      const items = (data.products || []).filter((p) => (p.product_name_en || p.product_name) && p.nutriments?.["energy-kcal_100g"] != null).map((p) => ({ ...p, _name: p.product_name_en || p.product_name }));
+      const items = (data.products || [])
+        .filter((p) => p.nutriments?.["energy-kcal_100g"] != null)
+        .map((p) => ({ ...p, _name: p.product_name_en || p.product_name }))
+        .filter((p) => p._name && p._name.trim().length > 1)
+        .sort((a, b) => (b.product_name_en ? 1 : 0) - (a.product_name_en ? 1 : 0))
+        .slice(0, 10);
       setSearchRes(items);
     } catch { }
     setSearching(false);
@@ -386,26 +395,45 @@ function RecipeManager({ recipes, onAdd, onDelete, onClose }) {
 
   const addIngredient = (p) => {
     const gr = parseFloat(ingGrams[p.code] || "100") || 100, ratio = gr / 100, n = p.nutriments || {};
-    setIngredients((prev) => [...prev, { id: uid(), name: p._name, grams: gr, calories: (n["energy-kcal_100g"] || 0) * ratio, protein: (n.proteins_100g || 0) * ratio, carbs: (n.carbohydrates_100g || 0) * ratio, fat: (n.fat_100g || 0) * ratio, fiber: (n.fiber_100g || 0) * ratio }]);
+    setIngredients((prev) => [...prev, {
+      id: uid(), name: p._name, grams: gr,
+      calories: (n["energy-kcal_100g"] || 0) * ratio, protein: (n.proteins_100g || 0) * ratio,
+      carbs: (n.carbohydrates_100g || 0) * ratio, fat: (n.fat_100g || 0) * ratio, fiber: (n.fiber_100g || 0) * ratio,
+    }]);
     setSearchRes([]); setSearchQ(""); setIngGrams({});
   };
 
-  const totals = ingredients.reduce((t, i) => ({ cal: t.cal + i.calories, protein: t.protein + i.protein, carbs: t.carbs + i.carbs, fat: t.fat + i.fat, fiber: t.fiber + i.fiber }), { cal: 0, protein: 0, carbs: 0, fat: 0, fiber: 0 });
+  const totals = ingredients.reduce((t, i) => ({
+    cal: t.cal + i.calories, protein: t.protein + i.protein,
+    carbs: t.carbs + i.carbs, fat: t.fat + i.fat, fiber: t.fiber + i.fiber,
+  }), { cal: 0, protein: 0, carbs: 0, fat: 0, fiber: 0 });
+
+  const openCreate = () => { setEditingRecipe(null); setName(""); setIngredients([]); setCreating(true); };
+  const openEdit = (r) => { setEditingRecipe(r); setName(r.name); setIngredients(r.ingredients || []); setCreating(true); };
+
+  const handleSave = () => {
+    if (!name.trim() || !ingredients.length) return;
+    if (editingRecipe) { onUpdate(editingRecipe.id, { name, ingredients, totals }); }
+    else { onAdd({ name, ingredients, totals }); }
+    setCreating(false); setName(""); setIngredients([]); setEditingRecipe(null);
+  };
 
   if (creating) return (
-    <Modal title="Create Recipe" onClose={() => setCreating(false)}>
+    <Modal title={editingRecipe ? "Edit Recipe" : "Create Recipe"} onClose={() => { setCreating(false); setEditingRecipe(null); }}>
       <div className="p-4 space-y-3">
         <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Recipe name…"
           className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3 text-white" />
         <div className="flex gap-2">
-          <input value={searchQ} onChange={(e) => setSearchQ(e.target.value)} onKeyDown={(e) => e.key === "Enter" && doSearch()} placeholder="Search ingredient…"
+          <input value={searchQ} onChange={(e) => setSearchQ(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && doSearch()}
+            placeholder="Search ingredient in English…"
             className="flex-1 bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-2.5 text-white text-sm placeholder-zinc-500" />
           <button onClick={doSearch} className="bg-zinc-700 text-white rounded-xl px-3"><Search size={16} /></button>
         </div>
         {searching && <div className="text-zinc-400 text-xs">Searching…</div>}
         {searchRes.map((p) => (
           <div key={p.code} className="bg-zinc-800 rounded-xl p-3 flex items-center gap-3">
-            <div className="flex-1 text-sm text-white">{p._name}</div>
+            <div className="flex-1 text-sm text-white leading-tight">{p._name}</div>
             <input type="number" value={ingGrams[p.code] || "100"}
               onChange={(e) => setIngGrams((g) => ({ ...g, [p.code]: e.target.value }))}
               className="w-14 bg-zinc-700 border border-zinc-600 rounded-lg py-1 text-white text-xs text-center" />
@@ -413,29 +441,33 @@ function RecipeManager({ recipes, onAdd, onDelete, onClose }) {
             <button onClick={() => addIngredient(p)} className="text-lime-400 font-bold text-xs">+Add</button>
           </div>
         ))}
-        {ingredients.map((ing, i) => (
-          <div key={ing.id} className="flex justify-between items-center py-1.5 border-b border-zinc-800">
-            <span className="text-sm text-white">{ing.name}</span>
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-zinc-400">{ing.grams}g</span>
-              <button onClick={() => setIngredients((p) => p.filter((_, j) => j !== i))} className="text-zinc-600 hover:text-red-400"><X size={12} /></button>
-            </div>
-          </div>
-        ))}
         {ingredients.length > 0 && (
-          <>
-            <div className="bg-zinc-800 rounded-xl p-3 flex justify-around text-xs">
-              {[["Cal", round(totals.cal), "text-lime-400"], ["P", round(totals.protein), "text-sky-400"], ["C", round(totals.carbs), "text-amber-400"], ["F", round(totals.fat), "text-rose-400"]].map(([l, v, c]) => (
-                <div key={l} className="text-center"><div className={`font-bold text-base ${c}`} style={H}>{v}</div><div className="text-zinc-500">{l}</div></div>
-              ))}
-            </div>
-            <button onClick={() => { if (!name.trim()) return; onAdd({ name, ingredients, totals }); setCreating(false); setName(""); setIngredients([]); }}
-              disabled={!name.trim()}
-              className="w-full bg-lime-400 disabled:opacity-40 text-zinc-950 font-bold rounded-xl py-3.5" style={H}>
-              Save Recipe
-            </button>
-          </>
+          <div className="border border-zinc-800 rounded-xl overflow-hidden">
+            {ingredients.map((ing, i) => (
+              <div key={ing.id} className="flex justify-between items-center px-3 py-2 border-b border-zinc-800 last:border-0">
+                <span className="text-sm text-white flex-1 mr-2 leading-tight">{ing.name}</span>
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  <span className="text-xs text-zinc-400">{ing.grams}g</span>
+                  <span className="text-xs text-lime-400" style={H}>{round(ing.calories)} kcal</span>
+                  <button onClick={() => setIngredients((p) => p.filter((_, j) => j !== i))} className="text-zinc-600 hover:text-red-400"><X size={12} /></button>
+                </div>
+              </div>
+            ))}
+          </div>
         )}
+        {ingredients.length > 0 && (
+          <div className="bg-zinc-800 rounded-xl p-3 flex justify-around text-xs">
+            {[["Cal", round(totals.cal), "text-lime-400"], ["P", round(totals.protein), "text-sky-400"],
+              ["C", round(totals.carbs), "text-amber-400"], ["F", round(totals.fat), "text-rose-400"]].map(([l, v, c]) => (
+              <div key={l} className="text-center"><div className={`font-bold text-base ${c}`} style={H}>{v}</div><div className="text-zinc-500">{l}</div></div>
+            ))}
+          </div>
+        )}
+        <button onClick={handleSave} disabled={!name.trim() || !ingredients.length}
+          className="w-full bg-lime-400 disabled:opacity-40 text-zinc-950 font-bold rounded-xl py-3.5" style={H}>
+          {editingRecipe ? "Save Changes" : "Save Recipe"}
+        </button>
+        {editingRecipe && <div className="text-xs text-zinc-500 text-center">Editing won't affect meals you've already logged.</div>}
       </div>
     </Modal>
   );
@@ -443,16 +475,23 @@ function RecipeManager({ recipes, onAdd, onDelete, onClose }) {
   return (
     <Modal title="Recipes" onClose={onClose}>
       <div className="p-4">
-        <button onClick={() => setCreating(true)} className="w-full border-2 border-dashed border-zinc-700 text-zinc-400 rounded-2xl py-3 text-sm mb-4">+ Create Recipe</button>
+        <button onClick={openCreate} className="w-full border-2 border-dashed border-zinc-700 text-zinc-400 rounded-2xl py-3 text-sm mb-4">+ Create Recipe</button>
         {!recipes.length ? <div className="text-center text-zinc-500 py-8 text-sm">No recipes yet.</div>
           : recipes.map((r) => (
             <div key={r.id} className="bg-zinc-900 border border-zinc-800 rounded-2xl p-4 mb-3">
               <div className="flex justify-between items-start mb-2">
-                <div className="font-semibold text-white">{r.name}</div>
-                <button onClick={() => onDelete(r.id)} className="text-zinc-600 hover:text-red-400"><Trash2 size={14} /></button>
+                <div className="flex-1 mr-2">
+                  <div className="font-semibold text-white">{r.name}</div>
+                  <div className="text-xs text-zinc-500 mt-0.5">{(r.ingredients || []).length} ingredients</div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button onClick={() => openEdit(r)} className="text-zinc-400 hover:text-lime-400 p-1"><Edit2 size={14} /></button>
+                  <button onClick={() => onDelete(r.id)} className="text-zinc-600 hover:text-red-400"><Trash2 size={14} /></button>
+                </div>
               </div>
               <div className="flex gap-3 text-xs">
-                {[["Cal", round(r.totals?.cal || 0), "text-lime-400"], ["P", round(r.totals?.protein || 0), "text-sky-400"], ["C", round(r.totals?.carbs || 0), "text-amber-400"], ["F", round(r.totals?.fat || 0), "text-rose-400"]].map(([l, v, c]) => (
+                {[["Cal", round(r.totals?.cal || 0), "text-lime-400"], ["P", round(r.totals?.protein || 0), "text-sky-400"],
+                  ["C", round(r.totals?.carbs || 0), "text-amber-400"], ["F", round(r.totals?.fat || 0), "text-rose-400"]].map(([l, v, c]) => (
                   <span key={l}><span className={`font-bold ${c}`} style={H}>{v}</span><span className="text-zinc-500"> {l}</span></span>
                 ))}
               </div>
@@ -465,7 +504,7 @@ function RecipeManager({ recipes, onAdd, onDelete, onClose }) {
 
 // ── Main Nutrition Page ───────────────────────────────────────────────────────
 export default function NutritionPage({ data }) {
-  const { settings, foodEntries, customFoods, recipes, addFoodEntry, deleteFoodEntry, addCustomFood, deleteCustomFood, addRecipe, deleteRecipe } = data;
+  const { settings, foodEntries, customFoods, recipes, addFoodEntry, deleteFoodEntry, addCustomFood, deleteCustomFood, addRecipe, updateRecipe, deleteRecipe } = data;
   const [offset, setOffset] = useState(0);
   const [addModal, setAddModal] = useState(null);
   const [showCustom, setShowCustom] = useState(false);
@@ -562,7 +601,7 @@ export default function NutritionPage({ data }) {
           customFoods={customFoods} recipes={recipes} />
       )}
       {showCustom && <AddCustomFoodModal onAdd={(f) => addCustomFood(f)} onClose={() => setShowCustom(false)} />}
-      {showRecipes && <RecipeManager recipes={recipes} onAdd={(r) => addRecipe(r)} onDelete={(id) => deleteRecipe(id)} onClose={() => setShowRecipes(false)} />}
+      {showRecipes && <RecipeManager recipes={recipes} onAdd={(r) => addRecipe(r)} onUpdate={(id, r) => updateRecipe(id, r)} onDelete={(id) => deleteRecipe(id)} onClose={() => setShowRecipes(false)} />}
     </div>
   );
 }
