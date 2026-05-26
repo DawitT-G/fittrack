@@ -90,6 +90,107 @@ function MeasurementComparison({ measurements }) {
   );
 }
 
+// ── Body Fat Calculator (US Navy Method) ─────────────────────────────────────
+function calcBodyFat(gender, heightCm, neckCm, waistCm, hipCm) {
+  const h = parseFloat(heightCm);
+  const neck = parseFloat(neckCm);
+  const waist = parseFloat(waistCm);
+  const hip = parseFloat(hipCm);
+  if (!h || !neck || !waist || isNaN(h) || isNaN(neck) || isNaN(waist)) return null;
+  if (gender === "female" && !hip) return null;
+  let bf;
+  if (gender === "female") {
+    const denom = 1.29579 - 0.35004 * Math.log10(waist + hip - neck) + 0.22100 * Math.log10(h);
+    bf = 495 / denom - 450;
+  } else {
+    const denom = 1.0324 - 0.19077 * Math.log10(waist - neck) + 0.15456 * Math.log10(h);
+    bf = 495 / denom - 450;
+  }
+  return Math.max(2, Math.min(60, Math.round(bf * 10) / 10));
+}
+
+function getBodyFatCategory(bf, gender) {
+  if (gender === "female") {
+    if (bf < 14) return { label: "Essential Fat", color: "text-sky-400" };
+    if (bf < 21) return { label: "Athlete", color: "text-lime-400" };
+    if (bf < 25) return { label: "Fitness", color: "text-lime-400" };
+    if (bf < 32) return { label: "Acceptable", color: "text-amber-400" };
+    return { label: "High", color: "text-red-400" };
+  }
+  if (bf < 6) return { label: "Essential Fat", color: "text-sky-400" };
+  if (bf < 14) return { label: "Athlete", color: "text-lime-400" };
+  if (bf < 18) return { label: "Fitness", color: "text-lime-400" };
+  if (bf < 25) return { label: "Acceptable", color: "text-amber-400" };
+  return { label: "High", color: "text-red-400" };
+}
+
+function BodyFatCard({ settings, latestMeasure }) {
+  const gender = settings.gender || "male";
+  const height = settings.height;
+  const d = latestMeasure?.data || {};
+  const neck = d.neck;
+  const waist = d.waist;
+  const hip = d.hips;
+
+  const missing = [];
+  if (!height) missing.push("height (in Settings)");
+  if (!neck) missing.push("neck measurement");
+  if (!waist) missing.push("waist measurement");
+  if (gender === "female" && !hip) missing.push("hips measurement");
+
+  const bf = missing.length === 0 ? calcBodyFat(gender, height, neck, waist, hip) : null;
+  const category = bf !== null ? getBodyFatCategory(bf, gender) : null;
+
+  return (
+    <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-4 mb-4">
+      <div className="flex items-center justify-between mb-3">
+        <div className="text-sm font-semibold">Body Fat Estimate</div>
+        <div className="text-xs text-zinc-500">US Navy Method</div>
+      </div>
+
+      {bf !== null ? (
+        <div className="flex items-center gap-4">
+          <div>
+            <div className={`text-4xl font-bold ${category.color}`} style={H}>{bf}<span className="text-xl">%</span></div>
+            <div className={`text-sm font-semibold mt-0.5 ${category.color}`}>{category.label}</div>
+          </div>
+          <div className="flex-1">
+            {/* Visual bar */}
+            <div className="relative h-3 bg-zinc-800 rounded-full overflow-hidden mb-2">
+              <div className="absolute inset-0 flex">
+                <div className="bg-sky-400 opacity-70" style={{ width: gender === "female" ? "14%" : "6%" }} />
+                <div className="bg-lime-400 opacity-70" style={{ width: gender === "female" ? "11%" : "12%" }} />
+                <div className="bg-lime-600 opacity-70" style={{ width: gender === "female" ? "7%" : "7%" }} />
+                <div className="bg-amber-400 opacity-70" style={{ width: gender === "female" ? "14%" : "14%" }} />
+                <div className="bg-red-400 opacity-70 flex-1" />
+              </div>
+              {/* Marker */}
+              <div className="absolute top-0 bottom-0 w-0.5 bg-white"
+                style={{ left: `${Math.min(Math.max(bf / 50 * 100, 2), 97)}%` }} />
+            </div>
+            <div className="flex justify-between text-xs text-zinc-600">
+              <span>Essential</span><span>Athlete</span><span>Fitness</span><span>High</span>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div>
+          <div className="text-zinc-500 text-sm mb-2">Need a few more data points to estimate:</div>
+          <ul className="space-y-1">
+            {missing.map((m) => (
+              <li key={m} className="text-xs text-zinc-400 flex items-center gap-1.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-zinc-600 flex-shrink-0" />
+                {m}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      <div className="text-xs text-zinc-600 mt-3">Rough estimate ±3–4%. Not a substitute for professional measurement.</div>
+    </div>
+  );
+}
+
 // ── Main Body Page ────────────────────────────────────────────────────────────
 export default function BodyPage({ data }) {
   const { settings, weights, measurements, photos, addWeight, deleteWeight, addMeasurement, deleteMeasurement, uploadPhoto, deletePhoto } = data;
@@ -268,6 +369,9 @@ export default function BodyPage({ data }) {
                   </button>
                 </div>
               )}
+
+              {/* Body fat estimate */}
+              <BodyFatCard settings={settings} latestMeasure={latestMeasure} />
 
               {/* Comparison */}
               {measurements.length > 0 && (
