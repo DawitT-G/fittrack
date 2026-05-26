@@ -4,6 +4,7 @@ export const AI_KEY = import.meta.env.VITE_ANTHROPIC_API_KEY || "";
 export const DEFAULTS = {
   calorieGoal: 2500, proteinGoal: 160, carbsGoal: 280, fatGoal: 75,
   fiberGoal: 30, restTime: 90, units: "kg", measureUnit: "cm", waterGoal: 2500,
+  height: "", gender: "male",
 };
 
 export const MEALS = ["Breakfast", "Lunch", "Dinner", "Snacks"];
