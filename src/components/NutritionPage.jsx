@@ -56,6 +56,7 @@ function BarcodeScanner({ onDetected, onClose }) {
 // ── Food confirm screen ───────────────────────────────────────────────────────
 function FoodConfirm({ food, meal, onAdd, onBack }) {
   const [grams, setGrams] = useState("100");
+  const [notes, setNotes] = useState("");
   const g = parseFloat(grams) || 100, ratio = g / 100, n = food.nutriments || {};
   const get = (a, b) => ((n[a] ?? n[b]) || 0) * ratio;
 
@@ -64,12 +65,12 @@ function FoodConfirm({ food, meal, onAdd, onBack }) {
       <div className="p-4">
         <div className="text-lg font-bold leading-snug mb-1">{food._name}</div>
         {food.brands && <div className="text-sm text-zinc-400 mb-4">{food.brands}</div>}
-        <div className="mb-5">
+        <div className="mb-4">
           <label className="text-xs text-zinc-400 block mb-1">Amount (grams)</label>
           <input type="number" value={grams} onChange={(e) => setGrams(e.target.value)}
             className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3 text-white text-xl text-center font-bold" style={H} />
         </div>
-        <div className="grid grid-cols-2 gap-3 mb-6">
+        <div className="grid grid-cols-2 gap-3 mb-4">
           {[
             ["Calories", round(get("energy-kcal_100g", "calories")), "kcal", "text-lime-400"],
             ["Protein", round(get("proteins_100g", "protein")), "g", "text-sky-400"],
@@ -83,9 +84,15 @@ function FoodConfirm({ food, meal, onAdd, onBack }) {
             </div>
           ))}
         </div>
+        <div className="mb-5">
+          <label className="text-xs text-zinc-400 block mb-1">Note <span className="text-zinc-600">(optional)</span></label>
+          <input value={notes} onChange={(e) => setNotes(e.target.value)}
+            placeholder="e.g. homemade, ate half portion…"
+            className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-2.5 text-white text-sm placeholder-zinc-600" />
+        </div>
         <button onClick={() => {
           onAdd({
-            meal, name: food._name, brand: food.brands || food.brand || "", grams: g,
+            meal, name: food._name, brand: food.brands || food.brand || "", grams: g, notes,
             calories: get("energy-kcal_100g", "calories"), protein: get("proteins_100g", "protein"),
             carbs: get("carbohydrates_100g", "carbs"), fat: get("fat_100g", "fat"), fiber: get("fiber_100g", "fiber"),
           });
@@ -383,7 +390,7 @@ function RecipeManager({ recipes, onAdd, onUpdate, onDelete, onClose }) {
     setSearching(true); setSearchRes([]); setSearchError("");
     try {
       const res = await fetch(
-        `https://api.nal.usda.gov/fdc/v1/foods/search?query=${encodeURIComponent(q)}&api_key=IcD51EM9WkfWE0WBKtuemOCHgmsx6fZSxVguEfjT&dataType=Foundation,SR%20Legacy&pageSize=15`,
+        `https://api.nal.usda.gov/fdc/v1/foods/search?query=${encodeURIComponent(q)}&api_key=DEMO_KEY&dataType=Foundation,SR%20Legacy&pageSize=15`,
         { signal: AbortSignal.timeout(8000) }
       );
       const data = await res.json();
@@ -531,11 +538,18 @@ export default function NutritionPage({ data }) {
   const [addModal, setAddModal] = useState(null);
   const [showCustom, setShowCustom] = useState(false);
   const [showRecipes, setShowRecipes] = useState(false);
+  const [customMeals, setCustomMeals] = useState([]); // extra meal slots for this session
+  const [addingMealName, setAddingMealName] = useState(false);
+  const [newMealName, setNewMealName] = useState("");
 
   const d = new Date(); d.setDate(d.getDate() + offset);
   const dateStr = d.toISOString().split("T")[0];
   const label = offset === 0 ? "Today" : offset === -1 ? "Yesterday" : d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
   const entries = foodEntries.filter((e) => e.date === dateStr);
+
+  // All meal slots: default + any custom ones used today + any added this session
+  const usedCustomMeals = [...new Set(entries.map(e => e.meal).filter(m => !MEALS.includes(m)))];
+  const allMeals = [...MEALS, ...usedCustomMeals, ...customMeals.filter(m => !usedCustomMeals.includes(m))];
 
   const cal = round(entries.reduce((s, e) => s + (e.calories || 0), 0));
   const protein = round(entries.reduce((s, e) => s + (e.protein || 0), 0));
@@ -581,7 +595,7 @@ export default function NutritionPage({ data }) {
       </div>
 
       {/* Meals */}
-      {MEALS.map((meal) => {
+      {allMeals.map((meal) => {
         const me = entries.filter((e) => e.meal === meal);
         const mCal = round(me.reduce((s, e) => s + (e.calories || 0), 0));
         return (
@@ -598,23 +612,54 @@ export default function NutritionPage({ data }) {
             {me.length === 0
               ? <div className="text-zinc-700 text-xs py-1">Nothing logged</div>
               : me.map((entry) => (
-                <div key={entry.id} className="bg-zinc-900 border border-zinc-800 rounded-xl px-3.5 py-2.5 mb-1.5 flex justify-between items-center">
-                  <div className="flex-1 mr-2">
-                    <div className="text-sm font-medium text-white leading-tight">
-                      {entry.name}
-                      {entry.brand === "AI Estimate" && <span className="ml-1.5 text-xs text-zinc-500 bg-zinc-800 px-1.5 py-0.5 rounded">est.</span>}
+                <div key={entry.id} className="bg-zinc-900 border border-zinc-800 rounded-xl px-3.5 py-2.5 mb-1.5">
+                  <div className="flex justify-between items-start">
+                    <div className="flex-1 mr-2">
+                      <div className="text-sm font-medium text-white leading-tight">
+                        {entry.name}
+                        {entry.brand === "AI Estimate" && <span className="ml-1.5 text-xs text-zinc-500 bg-zinc-800 px-1.5 py-0.5 rounded">est.</span>}
+                      </div>
+                      <div className="text-xs text-zinc-500 mt-0.5">{round(entry.grams)}g · P:{round(entry.protein)} C:{round(entry.carbs)} F:{round(entry.fat)}</div>
+                      {entry.notes && <div className="text-xs text-zinc-500 mt-0.5 italic">"{entry.notes}"</div>}
                     </div>
-                    <div className="text-xs text-zinc-500 mt-0.5">{round(entry.grams)}g · P:{round(entry.protein)} C:{round(entry.carbs)} F:{round(entry.fat)}</div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-lime-400 font-bold text-sm" style={H}>{round(entry.calories)}</span>
-                    <button onClick={() => deleteFoodEntry(entry.id)} className="text-zinc-700 hover:text-red-400 p-0.5"><X size={13} /></button>
+                    <div className="flex items-center gap-2">
+                      <span className="text-lime-400 font-bold text-sm" style={H}>{round(entry.calories)}</span>
+                      <button onClick={() => deleteFoodEntry(entry.id)} className="text-zinc-700 hover:text-red-400 p-0.5"><X size={13} /></button>
+                    </div>
                   </div>
                 </div>
               ))}
           </div>
         );
       })}
+
+      {/* Add custom meal slot */}
+      <div className="mx-4 mb-4">
+        {addingMealName ? (
+          <div className="flex gap-2">
+            <input value={newMealName} onChange={(e) => setNewMealName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && newMealName.trim()) {
+                  setCustomMeals(m => [...m, newMealName.trim()]);
+                  setNewMealName(""); setAddingMealName(false);
+                }
+              }}
+              placeholder="Meal name (e.g. Pre-workout snack)…" autoFocus
+              className="flex-1 bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-2.5 text-white text-sm placeholder-zinc-600" />
+            <button onClick={() => {
+              if (newMealName.trim()) { setCustomMeals(m => [...m, newMealName.trim()]); }
+              setNewMealName(""); setAddingMealName(false);
+            }} className="bg-lime-400 text-zinc-950 font-bold text-xs px-3 rounded-xl" style={H}>Add</button>
+            <button onClick={() => { setNewMealName(""); setAddingMealName(false); }}
+              className="text-zinc-500 px-2"><X size={14} /></button>
+          </div>
+        ) : (
+          <button onClick={() => setAddingMealName(true)}
+            className="text-zinc-500 text-xs flex items-center gap-1.5 hover:text-lime-400 transition-colors">
+            <Plus size={12} /> Add custom meal slot
+          </button>
+        )}
+      </div>
 
       {addModal && (
         <FoodSearchModal meal={addModal.meal}
