@@ -129,6 +129,10 @@ export default function useProfileData(profileId) {
       upd("measurements", [...state.measurements, row].sort((a, b) => a.date.localeCompare(b.date)));
       await supabase.from("measurements").insert(row);
     },
+    updateMeasurement: async (id, newData) => {
+      upd("measurements", state.measurements.map((m) => m.id === id ? { ...m, data: newData } : m));
+      await supabase.from("measurements").update({ data: newData }).eq("id", id);
+    },
     deleteMeasurement: async (id) => {
       upd("measurements", state.measurements.filter((m) => m.id !== id));
       await supabase.from("measurements").delete().eq("id", id);
